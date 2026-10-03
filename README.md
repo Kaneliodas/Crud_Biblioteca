@@ -127,3 +127,7 @@ Em uma máquina nova, além de instalar as dependências do Node, é necessário
 ## Licença
 
 Este projeto está em desenvolvimento e foi criado para fins de estudo.
+
+## OBS
+
+Você precisa do mongodb compass para ver o seu banco de dados local.
