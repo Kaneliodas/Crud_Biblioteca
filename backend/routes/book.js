@@ -3,11 +3,10 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const Book = require('../models/Books');
 
-let memoryBooks = [
-  
+// Array para armazenar livros em memória
+let memoryBooks = [];
 
-];
-
+// Função para verificar se o MongoDB está disponível
 const isMongoAvailable = () => mongoose.connection.readyState === 1;
 
 // Pegando todos os livros
