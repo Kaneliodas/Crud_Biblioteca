@@ -48,6 +48,7 @@ router.post('/', async (req, res) => {
     return res.status(500).json({ message: 'Erro ao criar livro, é osso :(', error: error.message });
   }
 });
+
 //Update de algum livro - U do Crud
 router.put('/:id',async (req, res) => {
   const updated = await Book.findByIdAndUpdate(req.params.id, req.body, { new: true});
