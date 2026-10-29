@@ -39,7 +39,7 @@ router.post('/', async (req, res) => {
       year: Number(req.body.year || 0),
       available: Boolean(req.body.available),
     };
-
+    
     memoryBooks.push(newBook);
     return res.status(201).json(newBook);
   } catch (error) {
