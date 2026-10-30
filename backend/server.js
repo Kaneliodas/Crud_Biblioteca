@@ -2,13 +2,14 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bookRoutes = require('./routes/book');
-const userRoutes = require('./routes/User');
+const userRoutes = require('./routes/user');
 const app = express();
 const PORT = 5000;
 
 app.use(cors());
 app.use(express.json());
 app.use('/api/books', bookRoutes);
+app.use('/api/users', userRoutes);
 
 const startMongo = async () => {
   try {

@@ -2,12 +2,15 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Book = require('../models/Books');
+const authenticate = require('../middleware/authenticate');
 
 // Array para armazenar livros em memória
 let memoryBooks = [{id: '1', title: 'Livro em memória', author: 'Autor Desconhecido', year: 2023, available: true}];
 
 // Função para verificar se o MongoDB está disponível
 const isMongoAvailable = () => mongoose.connection.readyState === 1;
+
+router.use(authenticate);
 
 // Pegando todos os livros
 router.get('/', async (req, res) => {
