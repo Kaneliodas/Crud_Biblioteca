@@ -2,15 +2,12 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Book = require('../models/Books');
-const authenticate = require('../middleware/authenticate');
 
 // Array para armazenar livros em memória
-let memoryBooks = [{id: '1', title: 'Livro em memória', author: 'Autor Desconhecido', year: 2023, available: true}];
+let memoryBooks = [{ id: '1', title: 'Livro em memória', author: 'Autor Desconhecido', year: 2023, available: true }];
 
 // Função para verificar se o MongoDB está disponível
 const isMongoAvailable = () => mongoose.connection.readyState === 1;
-
-router.use(authenticate);
 
 // Pegando todos os livros
 router.get('/', async (req, res) => {
@@ -52,14 +49,14 @@ router.post('/', async (req, res) => {
 });
 
 //Update de algum livro - U do Crud
-router.put('/:id',async (req, res) => {
-  const updated = await Book.findByIdAndUpdate(req.params.id, req.body, { new: true});
+router.put('/:id', async (req, res) => {
+  const updated = await Book.findByIdAndUpdate(req.params.id, req.body, { new: true });
   res.json(updated);
 });
 //Deletando algum livro - D do Crud
 router.delete('/:id', async (req, res) => {
   await Book.findByIdAndDelete(req.params.id);
-  res.json({message: 'Livro incinerado com sucesso! Parabéns seu lixo!'});
+  res.json({ message: 'Livro incinerado com sucesso! Parabéns seu lixo!' });
 });
 
 module.exports = router;
