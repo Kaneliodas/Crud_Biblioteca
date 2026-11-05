@@ -4,7 +4,7 @@ const router = express.Router();
 const User = require('../models/User');
 
 // Array para armazenar usuários em memória
-let memoryUsers = [{ id: '1', name: 'John Doe', email: 'john@example.com' }];
+let memoryUsers = [{ id: '1', name: 'John Doe', email: 'john@example.com', password: 'password123', role: 'User'}];
 
 // user routes
 router.get('/', async (req, res) => {
@@ -16,6 +16,7 @@ router.get('/', async (req, res) => {
   }
 }
 );
+
 // Função para verificar se o MongoDB está disponível
 const MongoAvailable = () => mongoose.connection.readyState === 1;
 
@@ -115,6 +116,37 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting user:', error.message);
     return res.status(500).json({ message: 'Erro ao deletar usuário', error: error.message });
+  }
+});
+
+//Individualizar os livros de cada usuário
+router.get('/:id/books', async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      const user = await User.findById(req.params.id).populate('books');
+      if (!user) {
+        return res.status(404).json({ message: 'Usuário não encontrado' });
+      }
+      return res.json(user.books);
+    }
+  } catch (error) {
+    console.error('Error fetching user books:', error.message);
+    return res.status(500).json({ message: 'Erro ao buscar livros do usuário', error: error.message });
+  }
+});
+
+// Rota para buscar todos os usuários com o papel "Admin"
+router.get('/admins', async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      const admins = await User.find({ role: 'Admin' });
+      return res.json(admins);
+    }
+    const admins = memoryUsers.filter(user => user.role === 'Admin');
+    return res.json(admins);
+  } catch (error) {
+    console.error('Error fetching admins:', error.message);
+    return res.status(500).json({ message: 'Erro ao buscar administradores', error: error.message });
   }
 });
 

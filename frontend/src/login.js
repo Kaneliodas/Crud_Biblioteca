@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import './assets/css/login.css';
 
+
 function Login({ onLogin }) {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -43,6 +44,16 @@ function Login({ onLogin }) {
           name="password"
           placeholder="Senha"
           value={form.password}
+          onChange={handleChange}
+          required
+        />
+        // Adicionando o campo de função (role),funcionando via switch case no backend, para diferenciar usuários e administradores
+        <input
+          className="form-control"
+          type="role"
+          name="role"
+          placeholder="Função"
+          value={form.role}
           onChange={handleChange}
           required
         />
