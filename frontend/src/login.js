@@ -19,7 +19,7 @@ function Login({ onLogin }) {
 
     try {
       const response = await axios.post('http://localhost:5000/api/users/login', form);
-      onLogin(response.data.user);
+      onLogin(response.data.user, response.data.accessToken);
     } catch {
       setError('Email ou senha inválidos');
     }
@@ -44,16 +44,6 @@ function Login({ onLogin }) {
           name="password"
           placeholder="Senha"
           value={form.password}
-          onChange={handleChange}
-          required
-        />
-        // Adicionando o campo de função (role),funcionando via switch case no backend, para diferenciar usuários e administradores
-        <input
-          className="form-control"
-          type="role"
-          name="role"
-          placeholder="Função"
-          value={form.role}
           onChange={handleChange}
           required
         />

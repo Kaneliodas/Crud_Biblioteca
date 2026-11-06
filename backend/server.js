@@ -20,6 +20,9 @@ const startMongo = async () => {
   }
 };
 
-startMongo(); 
+const startServer = async () => {
+  await startMongo();
+  app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+};
 
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+startServer();

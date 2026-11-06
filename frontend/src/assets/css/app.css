@@ -13,6 +13,50 @@
   font-size: 28px;
 }
 
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-header p {
+  margin: -14px 0 20px;
+}
+
+.logs-section {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #d5ded8;
+  border-radius: 6px;
+  background: #f7faf8;
+}
+
+.logs-section h3 {
+  margin-top: 0;
+}
+
+.logs-list {
+  display: grid;
+  gap: 12px;
+}
+
+.log-card {
+  padding: 14px;
+  border: 1px solid #d5ded8;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.log-card h4,
+.log-card p {
+  margin: 0 0 8px;
+}
+
+.logs-error {
+  color: #a12622;
+}
+
 .book-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px auto;
@@ -88,6 +132,11 @@
 @media (max-width: 640px) {
   .app {
     padding: 28px 16px;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .book-form {
