@@ -43,6 +43,20 @@ cd frontend
 npm install
 ```
 
+### MongoDB
+
+Atualmente não se têm cadastro, siga o passo a passo:
+
+```
+1° Vá ao MongoDB
+
+2° Crie o Banco de Dados , bookstore, direcionado ao localhost:27017.
+
+3° No mongoDB crie as duas tabelas do diretório models, nomeias como books e users.
+
+4° Crie uma inserção de dados no MongoDB para a tabela de users.
+```
+
 ## 2) Configurar o MongoDB
 
 O backend está conectado ao MongoDB na URL:
