@@ -4,6 +4,8 @@ import Cadastro from './cadastro';
 import Login from './login';
 import './assets/css/app.css';
 
+const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
+
 function App() {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
@@ -126,7 +128,7 @@ function App() {
     await refreshLogs();
   };
 
-  const handleLogout = async () => {
+  const handleLogoutkey = async () => {
     try {
       if (accessToken) {
         await axios.post(
@@ -145,6 +147,54 @@ function App() {
       setLogsVisible(false);
     }
   };
+
+ // Fazendo um logout forçado
+// Transforma o handleLogout em useCallback 
+const handleLogout = useCallback(async (reason = 'Saiu do sistema') => {
+  try {
+    if (accessToken) {
+      await axios.post(
+        'http://localhost:5000/api/users/logout',
+        { reason }, // Envia o motivo para ficar registrado no log!
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+    }
+  } catch (err) {
+    console.error('Erro ao registrar logout:', err);
+  } finally {
+    setUser(null);
+    setAccessToken(null);
+    setBooks([]);
+    setLogs({ usersSummary: [], activities: [] });
+    setLogsVisible(false);
+    setShowRegister(false); // Volta direto para a tela de Login
+  }
+}, [accessToken]);
+useEffect(() => {
+  if (!user) return;
+
+  let inactivityTimer;
+
+  const resetTimer = () => {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      alert('Sua sessão expirou por inatividade (10 minutos).');
+      handleLogout('Sessão expirada por inatividade (10 min)');
+    }, INACTIVITY_LIMIT_MS);
+  };
+
+  // Eventos que indicam que o usuário está ativo
+  const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+  activityEvents.forEach((event) => window.addEventListener(event, resetTimer));
+
+  resetTimer(); // Inicia a contagem assim que entra
+
+  // Limpa os eventos e o timer ao sair ou desmontar
+  return () => {
+    clearTimeout(inactivityTimer);
+    activityEvents.forEach((event) => window.removeEventListener(event, resetTimer));
+  };
+}, [user, handleLogout]);
 
   if (!user) {
     return showRegister ? (
@@ -186,7 +236,7 @@ function App() {
                 : 'Ver logs e visão geral (Admin)'}
             </button>
           )}
-          <button className="btn" type="button" onClick={handleLogout} style={{ marginLeft: '8px' }}>
+          <button className="btn" type="button" onClick={handleLogoutkey} style={{ marginLeft: '8px' }}>
             Sair
           </button>
         </div>

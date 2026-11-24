@@ -20,7 +20,7 @@ let memoryUsers = [
 ];
 
 const loginSessions = new Map();
-const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
+const SESSION_DURATION_MS = 10 * 60 * 1000;
 
 const MongoAvailable = () => mongoose.connection.readyState === 1;
 
@@ -37,6 +37,7 @@ const requireAuth = (req, res, next) => {
     return res.status(401).json({ message: 'Sessão inválida ou expirada' });
   }
 
+  session.expiresAt = Date.now() + SESSION_DURATION_MS;
   req.session = session;
   next();
 };
@@ -119,13 +120,14 @@ router.post('/login', async (req, res) => {
 router.post('/logout', requireAuth, async (req, res) => {
   try {
     const accessToken = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+    const reason = req.body?.reason || 'Saiu do sistema';
 
     await recordLog({
       userId: req.session.userId,
       userName: req.session.userName,
       userEmail: req.session.userEmail,
       action: 'LOGOUT',
-      details: 'Saiu do sistema',
+      details: reason,
     });
 
     if (accessToken) {
