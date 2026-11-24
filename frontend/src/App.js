@@ -1,16 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import Login from './login';
 import Cadastro from './cadastro';
+import Login from './login';
 import './assets/css/app.css';
 
 function App() {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
-  const [showRegister, setShowRegister] = useState(true);
+  const [showRegister, setShowRegister] = useState(true); // Abre no Cadastro primeiro
 
   const [books, setBooks] = useState([]);
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState({ usersSummary: [], activities: [] });
   const [logsVisible, setLogsVisible] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState('');
@@ -68,6 +68,9 @@ function App() {
 
       setForm({ title: '', author: '', year: '', available: false });
       fetchBooks();
+      if (logsVisible && isAdmin) {
+        refreshLogs();
+      }
     } catch (err) {
       console.error('Erro ao salvar livro:', err);
     }
@@ -87,26 +90,22 @@ function App() {
     try {
       await axios.delete(`http://localhost:5000/api/books/${id}?ownerId=${user._id}`);
       fetchBooks();
+      if (logsVisible && isAdmin) {
+        refreshLogs();
+      }
     } catch (err) {
       console.error('Erro ao excluir livro:', err);
     }
   };
 
-  const handleShowLogs = async () => {
-    if (logsVisible) {
-      setLogsVisible(false);
-      return;
-    }
-
+  const refreshLogs = async () => {
+    if (!isAdmin) return;
     setLogsLoading(true);
     setLogsError('');
     try {
       const response = await axios.get('http://localhost:5000/api/users/logs', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!Array.isArray(response.data)) {
-        throw new Error('A resposta da API de logs está em um formato inválido.');
-      }
       setLogs(response.data);
       setLogsVisible(true);
     } catch (error) {
@@ -118,12 +117,33 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setAccessToken(null);
-    setBooks([]);
-    setLogs([]);
-    setLogsVisible(false);
+  const handleShowLogs = async () => {
+    if (!isAdmin) return;
+    if (logsVisible) {
+      setLogsVisible(false);
+      return;
+    }
+    await refreshLogs();
+  };
+
+  const handleLogout = async () => {
+    try {
+      if (accessToken) {
+        await axios.post(
+          'http://localhost:5000/api/users/logout',
+          {},
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+      }
+    } catch (err) {
+      console.error('Erro ao registrar logout:', err);
+    } finally {
+      setUser(null);
+      setAccessToken(null);
+      setBooks([]);
+      setLogs({ usersSummary: [], activities: [] });
+      setLogsVisible(false);
+    }
   };
 
   if (!user) {
@@ -157,16 +177,14 @@ function App() {
           </p>
         </div>
         <div>
-          {isAdmin ? (
+          {isAdmin && (
             <button className="btn" type="button" onClick={handleShowLogs} disabled={logsLoading}>
               {logsLoading
                 ? 'Carregando...'
                 : logsVisible
-                ? 'Ocultar visão geral'
-                : 'Ver visão geral dos usuários'}
+                ? 'Ocultar visão geral e logs'
+                : 'Ver logs e visão geral (Admin)'}
             </button>
-          ) : (
-            <p className="logs-permission">A visão geral está disponível apenas para administradores.</p>
           )}
           <button className="btn" type="button" onClick={handleLogout} style={{ marginLeft: '8px' }}>
             Sair
@@ -174,20 +192,34 @@ function App() {
         </div>
       </header>
 
-      {logsError && (
+      {logsError && isAdmin && (
         <p className="logs-error" role="alert">
           {logsError}
         </p>
       )}
 
-      {logsVisible && (
-        <section className="logs-section" aria-label="Visão geral dos usuários">
+      {logsVisible && isAdmin && (
+        <section className="logs-section" aria-label="Logs e visão geral dos usuários">
+          <h3>Histórico de Entradas, Saídas e Modificações nos Livros</h3>
+          {logs.activities?.length === 0 ? (
+            <p>Nenhuma atividade registrada ainda.</p>
+          ) : (
+            <ul className="activity-list">
+              {logs.activities.map((act) => (
+                <li key={act._id}>
+                  <strong>[{act.action}]</strong> {act.userName} ({act.userEmail}) — {act.details} ·{' '}
+                  <em>{new Date(act.timestamp).toLocaleString('pt-BR')}</em>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <h3>Usuários e seus livros</h3>
-          {logs.length === 0 ? (
+          {logs.usersSummary?.length === 0 ? (
             <p>Nenhum usuário encontrado.</p>
           ) : (
             <div className="logs-list">
-              {logs.map(({ user: loggedUser, books: userBooks }) => (
+              {logs.usersSummary.map(({ user: loggedUser, books: userBooks }) => (
                 <article className="log-card" key={loggedUser._id}>
                   <h4>{loggedUser.name || 'Sem nome'}</h4>
                   <p>
