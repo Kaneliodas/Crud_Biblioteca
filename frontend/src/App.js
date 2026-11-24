@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import Cadastro from './cadastro';
 import Login from './login';
 import './assets/css/app.css';
 
@@ -16,7 +17,9 @@ function App() {
     author: '',
     year: '',
     available: false,
+    data_criacao: ''
   });
+  
   const [editingId, setEditingId] = useState(null);
   const isAdmin = user?.role?.trim().toLowerCase() === 'admin';
 
@@ -53,9 +56,10 @@ function App() {
       await axios.post(`http://localhost:5000/api/books`, payload);
     }
 
-    setForm({ title: '', author: '', year: '', available: false });
+    setForm({ title: '', author: '', year: '', available: false, data_criacao: '', data_alteracao: '' });
     fetchBooks();
   };
+
     const handleEdit = (book) => {
       setForm(book);
       setEditingId(book._id);
@@ -118,7 +122,7 @@ function App() {
               <p>Nenhum usuário encontrado.</p>
             ) : (
               <div className="logs-list">
-                {logs.map(({ user: loggedUser, books: userBooks }) => (
+                {logs.map(({ user: loggedUser, books: userBooks, data_criacao }) => (
                   <article className="log-card" key={loggedUser._id}>
                     <h4>{loggedUser.name || 'Sem nome'}</h4>
                     <p>{loggedUser.email} · {loggedUser.role}</p>
