@@ -1,297 +1,379 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const { randomBytes } = require('crypto');
+const express = require("express");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const { randomBytes } = require("crypto");
 const router = express.Router();
-const User = require('../models/User');
-const Book = require('../models/Books');
-const bookRoutes = require('./book');
+const User = require("../models/User");
+const Book = require("../models/Books");
+const bookRoutes = require("./book");
 
-// Array para armazenar usuários em memória
-let memoryUsers = [{ id: '1', name: 'John Doe', email: 'john@example.com', password: 'password123', role: 'User'}];
+let memoryUsers = [
+  {
+    _id: "1",
+    name: "John Doe",
+    email: "john@example.com",
+    password: "password123",
+    role: "User",
+    data_criacao: new Date(),
+  },
+];
+
 const loginSessions = new Map();
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
 
-const normalizeRole = role =>
-  String(role || 'User').trim().toLowerCase() === 'admin' ? 'Admin' : 'User';
-
-// user routes
-router.get('/', async (req, res) => {
-  try {
-    res.json(MongoAvailable() ? await User.find() : memoryUsers);
-  } catch (error) {
-    console.error('Error fetching users:', error.message);
-    return res.status(500).json({ message: 'Erro ao buscar usuários', error: error.message });
-  }
-}
-);
-
-// Função para verificar se o MongoDB está disponível
 const MongoAvailable = () => mongoose.connection.readyState === 1;
 
-router.post('/login', async (req, res) => {
+const normalizeRole = (role) =>
+  String(role || "User")
+    .trim()
+    .toLowerCase() === "admin"
+    ? "Admin"
+    : "User";
+
+// Middleware de autenticação
+const requireAuth = (req, res, next) => {
+  const accessToken = req.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const session = accessToken && loginSessions.get(accessToken);
+
+  if (!session || session.expiresAt <= Date.now()) {
+    if (accessToken) loginSessions.delete(accessToken);
+    return res.status(401).json({ message: "Sessão inválida ou expirada" });
+  }
+
+  req.session = session;
+  next();
+};
+
+// Middleware de administrador
+const requireAdmin = (req, res, next) => {
+  if (req.session.role !== "Admin") {
+    return res
+      .status(403)
+      .json({ message: "Apenas administradores podem acessar este recurso" });
+  }
+  next();
+};
+
+// Login com verificação de senha criptografada
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const mongoAvailable = MongoAvailable();
-    const user = mongoAvailable
-      ? await User.findOne({ email, password }).select('_id name email role')
-      : memoryUsers.find(user => user.email === email && user.password === password);
-
-    if (!user) {
-      return res.status(401).json({ message: 'Email ou senha inválidos' });
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: "Email e senha são obrigatórios" });
     }
 
-    const accessToken = randomBytes(32).toString('hex');
+    const normalizedEmail = email.toLowerCase().trim();
+    const mongoAvailable = MongoAvailable();
+    let user = null;
+    let isPasswordValid = false;
+
+    if (mongoAvailable) {
+      user = await User.findOne({ email: normalizedEmail }).select(
+        "+password _id name email role data_criacao",
+      );
+      if (user) {
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      }
+    } else {
+      user = memoryUsers.find((u) => u.email === normalizedEmail);
+      if (user) {
+        isPasswordValid =
+          user.password === password ||
+          (await bcrypt.compare(password, user.password).catch(() => false));
+      }
+    }
+
+    if (!user || !isPasswordValid) {
+      return res.status(401).json({ message: "Email ou senha inválidos" });
+    }
+
+    const accessToken = randomBytes(32).toString("hex");
     const role = normalizeRole(user.role);
-    console.info(`Login autenticado via ${mongoAvailable ? 'MongoDB' : 'memória'}; perfil=${role}`);
+
     loginSessions.set(accessToken, {
-      userId: String(user._id || user.id),
+      userId: String(user._id),
       role,
       expiresAt: Date.now() + SESSION_DURATION_MS,
     });
 
     return res.json({
       user: {
-        _id: user._id || user.id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role,
+        data_criacao: user.data_criacao,
       },
       accessToken,
     });
   } catch (error) {
-    console.error('Error logging in:', error.message);
-    return res.status(500).json({ message: 'Erro ao fazer login' });
+    console.error("Error logging in:", error.message);
+    return res.status(500).json({ message: "Erro ao fazer login" });
   }
 });
 
-// Criando um usuário - C do crud
-router.post('/', async (req, res) => {
+// Cadastro de usuário permitindo escolha de role ('User' ou 'Admin')
+router.post("/", async (req, res) => {
   try {
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({ message: "Nome, email e senha são obrigatórios." });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const validRole = normalizeRole(role);
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     if (MongoAvailable()) {
-      const newUser = new User({ ...req.body, role: 'User' });
+      const existingUser = await User.findOne({ email: normalizedEmail });
+      if (existingUser) {
+        return res
+          .status(409)
+          .json({ message: "Este e-mail já está cadastrado." });
+      }
+
+      const newUser = new User({
+        name: name.trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        role: validRole,
+      });
+
       await newUser.save();
-      return res.status(201).json(newUser);
+
+      return res.status(201).json({
+        _id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        data_criacao: newUser.data_criacao,
+      });
+    }
+
+    const existsInMemory = memoryUsers.some((u) => u.email === normalizedEmail);
+    if (existsInMemory) {
+      return res
+        .status(409)
+        .json({ message: "Este e-mail já está cadastrado." });
     }
 
     const newUser = {
-      ...req.body,
       _id: String(Date.now()),
-      role: 'User',
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      role: validRole,
+      data_criacao: new Date(),
     };
     memoryUsers.push(newUser);
-    return res.status(201).json(newUser);
-  } catch (error) {
-    console.error('Error creating user:', error.message);
-    return res.status(500).json({ message: 'Erro ao criar usuário', error: error.message });
-  }
-});
-// Read de algum usuário - R do Crud
-router.get('/:id', async (req, res, next) => {
-  if (['admins', 'logs', 'users'].includes(req.params.id)) {
-    return next();
-  }
 
-  try {
-    if (MongoAvailable()) {
-      const user = await User.findById(req.params.id);
-      return res.json(user);
-    }
-
-    const user = memoryUsers.find(user => user.id === req.params.id);
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-    return res.json(user);
+    const { password: _, ...safeUser } = newUser;
+    return res.status(201).json(safeUser);
   } catch (error) {
-    console.error('Error fetching user:', error.message);
-    return res.status(500).json({ message: 'Erro ao buscar usuário', error: error.message });
+    console.error("Error creating user:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao criar usuário", error: error.message });
   }
 });
 
-// Update de algum usuário - U do Crud
-router.put('/:id', async (req, res) => {
-  try {
-    const userData = { ...req.body };
-    delete userData.role;
-    if (MongoAvailable()) {
-      const updatedUser = await User.findByIdAndUpdate(req.params.id, userData, { new: true });
-      return res.json(updatedUser);
-    }
-
-    const userIndex = memoryUsers.findIndex(user => user.id === req.params.id);
-    if (userIndex === -1) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-    memoryUsers[userIndex] = { ...memoryUsers[userIndex], ...userData };
-    return res.json(memoryUsers[userIndex]);
-  } catch (error) {
-    console.error('Error updating user:', error.message);
-    return res.status(500).json({ message: 'Erro ao atualizar usuário', error: error.message });
-  }
-});
-
-// Delete de algum usuário - D do Crud
-router.delete('/:id', async (req, res) => {
+// Logs gerais (Apenas Admin) - Retorna data_criacao e livros de cada usuário
+router.get("/logs", requireAuth, requireAdmin, async (req, res) => {
   try {
     if (MongoAvailable()) {
-      const deletedUser = await User.findByIdAndDelete(req.params.id);
-      return res.json(deletedUser);
-    }
-
-    const userIndex = memoryUsers.findIndex(user => user.id === req.params.id);
-    if (userIndex === -1) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-    memoryUsers.splice(userIndex, 1);
-    return res.json({ message: 'Usuário deletado com sucesso' });
-  } catch (error) {
-    console.error('Error deleting user:', error.message);
-    return res.status(500).json({ message: 'Erro ao deletar usuário', error: error.message });
-  }
-});
-
-//Individualizar os livros de cada usuário
-router.get('/:id/books', async (req, res) => {
-  try {
-    if (MongoAvailable()) {
-      const user = await User.findById(req.params.id);
-      if (!user) {
-        return res.status(404).json({ message: 'Usuário não encontrado' });
-      }
-      return res.json(await Book.find({ owner: user._id }));
-    }
-
-    const user = memoryUsers.find(
-      item => (item._id || item.id) === req.params.id
-    );
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-    return res.json(bookRoutes.getMemoryBooksByOwner(req.params.id));
-  } catch (error) {
-    console.error('Error fetching user books:', error.message);
-    return res.status(500).json({ message: 'Erro ao buscar livros do usuário', error: error.message });
-  }
-});
-
-// Rota para buscar todos os usuários com o papel "Admin"
-router.get('/admins', async (req, res) => {
-  try {
-    if (MongoAvailable()) {
-      const admins = await User.find({ role: 'Admin' });
-      return res.json(admins);
-    }
-    const admins = memoryUsers.filter(user => user.role === 'Admin');
-    return res.json(admins);
-  } catch (error) {
-    console.error('Error fetching admins:', error.message);
-    return res.status(500).json({ message: 'Erro ao buscar administradores', error: error.message });
-  }
-});
-
-// Ligar um livro a um usuário específico a partir do login/ID
-router.post('/:id/books', async (req, res) => {
-  try {
-    if (MongoAvailable()) {
-      const user = await User.findById(req.params.id);
-      if (!user) {
-        return res.status(404).json({ message: 'Usuário não encontrado' });
-      }
-      const book = await Book.create({ ...req.body, owner: user._id });
-      return res.status(201).json(book);
-    }
-
-    const user = memoryUsers.find(
-      item => (item._id || item.id) === req.params.id
-    );
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-    const book = { ...req.body, owner: user._id };
-    memoryBooks.push(book);
-    return res.status(201).json(book);
-  } catch (error) {
-    console.error('Error creating book:', error.message);
-    return res.status(500).json({ message: 'Erro ao criar livro', error: error.message });
-  }
-});
-
-// Rota para buscar todos os usuários com o papel "User"
-router.get('/users', async (req, res) => {
-  try {
-    if (MongoAvailable()) {
-      const users = await User.find({ role: 'User' });
-      return res.json(users);
-    }
-    const users = memoryUsers.filter(user => user.role === 'User');
-    return res.json(users);
-  } catch (error) {
-    console.error('Error fetching users:', error.message);
-    return res.status(500).json({message: 'Erro ao buscar usuários', error: error.message});
-  }
-});
-
-// Rota para buscar todos os usuários com o papel "Admin"
-router.get('/admins', async (req, res) => {
-  try {
-    if (MongoAvailable()) {
-      const users = await User.find({ role: 'Admin' });
-      return res.json(users);
-    }
-    const users = memoryUsers.filter(user => user.role === 'Admin');
-    return res.json(users);
-  } catch (error) {
-    console.error('Error fetching admins:', error.message);
-    return res.status(500).json({message: 'Erro ao buscar administradores', error: error.message});
-  }
-});
-
-// Rota para os admins, saberem e verem os LOGS de todos os usuários, e poderem deletar ou atualizar qualquer usuário, e também poderem ver os livros de cada usuário
-router.get('/logs', async (req, res) => {
-  try {
-    const accessToken = req.get('authorization')?.replace(/^Bearer\s+/i, '');
-    const session = accessToken && loginSessions.get(accessToken);
-    if (!session || session.expiresAt <= Date.now()) {
-      if (accessToken) loginSessions.delete(accessToken);
-      return res.status(401).json({ message: 'Sessão inválida ou expirada' });
-    }
-    if (session.role !== 'Admin') {
-      return res.status(403).json({ message: 'Apenas administradores podem consultar os logs' });
-    }
-
-    if (MongoAvailable()) {
-      const users = await User.find().select('name email role');
-      const logs = await Promise.all(users.map(async user => {
-        const books = await Book.find({ owner: user._id });
-        return {
-          user: {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: normalizeRole(user.role),
-          },
-          books,
-        };
-      }));
+      const users = await User.find().select("name email role data_criacao");
+      const logs = await Promise.all(
+        users.map(async (user) => {
+          const books = await Book.find({ owner: user._id });
+          return {
+            user: {
+              _id: user._id,
+              name: user.name,
+              email: user.email,
+              role: normalizeRole(user.role),
+              data_criacao: user.data_criacao,
+            },
+            books,
+          };
+        }),
+      );
       return res.json(logs);
     }
-    const logs = memoryUsers.map(user => {
-      const books = bookRoutes.getMemoryBooksByOwner(user._id || user.id);
+
+    const logs = memoryUsers.map((user) => {
+      const books = bookRoutes.getMemoryBooksByOwner(user._id);
       return {
         user: {
-          _id: user._id || user.id,
+          _id: user._id,
           name: user.name,
           email: user.email,
           role: normalizeRole(user.role),
+          data_criacao: user.data_criacao || new Date(),
         },
         books,
       };
     });
     return res.json(logs);
   } catch (error) {
-    console.error('Error fetching logs:', error.message);
-    return res.status(500).json({message: 'Erro ao buscar logs', error: error.message});
+    console.error("Error fetching logs:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao buscar logs", error: error.message });
   }
 });
 
+// Listar todos os usuários (Apenas Admin, sem expor senhas)
+router.get("/", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      const users = await User.find().select("-password");
+      return res.json(users);
+    }
+    const safeUsers = memoryUsers.map(({ password, ...rest }) => rest);
+    return res.json(safeUsers);
+  } catch (error) {
+    console.error("Error fetching users:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao buscar usuários", error: error.message });
+  }
+});
+
+// Buscar usuários com papel "User"
+router.get("/users", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      const users = await User.find({ role: "User" }).select("-password");
+      return res.json(users);
+    }
+    const users = memoryUsers
+      .filter((u) => normalizeRole(u.role) === "User")
+      .map(({ password, ...rest }) => rest);
+    return res.json(users);
+  } catch (error) {
+    console.error("Error fetching users:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao buscar usuários", error: error.message });
+  }
+});
+
+// Buscar usuários com papel "Admin"
+router.get("/admins", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      const admins = await User.find({ role: "Admin" }).select("-password");
+      return res.json(admins);
+    }
+    const admins = memoryUsers
+      .filter((u) => normalizeRole(u.role) === "Admin")
+      .map(({ password, ...rest }) => rest);
+    return res.json(admins);
+  } catch (error) {
+    console.error("Error fetching admins:", error.message);
+    return res
+      .status(500)
+      .json({
+        message: "Erro ao buscar administradores",
+        error: error.message,
+      });
+  }
+});
+
+// Buscar usuário por ID
+router.get("/:id", requireAuth, async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+      const user = await User.findById(req.params.id).select("-password");
+      if (!user)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      return res.json(user);
+    }
+
+    const user = memoryUsers.find((u) => u._id === req.params.id);
+    if (!user)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    const { password, ...safeUser } = user;
+    return res.json(safeUser);
+  } catch (error) {
+    console.error("Error fetching user:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao buscar usuário", error: error.message });
+  }
+});
+
+// Atualizar usuário
+router.put("/:id", requireAuth, async (req, res) => {
+  try {
+    const userData = { ...req.body };
+    if (userData.role) {
+      userData.role = normalizeRole(userData.role);
+    }
+    if (userData.password) {
+      userData.password = await bcrypt.hash(userData.password, 10);
+    }
+
+    if (MongoAvailable()) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+      const updatedUser = await User.findByIdAndUpdate(
+        req.params.id,
+        userData,
+        { new: true },
+      ).select("-password");
+      if (!updatedUser)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      return res.json(updatedUser);
+    }
+
+    const userIndex = memoryUsers.findIndex((u) => u._id === req.params.id);
+    if (userIndex === -1)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+
+    memoryUsers[userIndex] = { ...memoryUsers[userIndex], ...userData };
+    const { password, ...safeUser } = memoryUsers[userIndex];
+    return res.json(safeUser);
+  } catch (error) {
+    console.error("Error updating user:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao atualizar usuário", error: error.message });
+  }
+});
+// Deletar usuário (Apenas Admin)
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (MongoAvailable()) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+      const deletedUser = await User.findByIdAndDelete(req.params.id).select(
+        "-password",
+      );
+      if (!deletedUser)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      return res.json({ message: "Usuário deletado com sucesso" });
+    }
+    const userIndex = memoryUsers.findIndex((u) => u._id === req.params.id);
+    if (userIndex === -1)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    memoryUsers.splice(userIndex, 1);
+    return res.json({ message: "Usuário deletado com sucesso" });
+  } catch (error) {
+    console.error("Error deleting user:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Erro ao deletar usuário", error: error.message });
+  }
+});
 module.exports = router;
